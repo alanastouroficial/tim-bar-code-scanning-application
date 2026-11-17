@@ -105,6 +105,13 @@ h2{font-family:var(--f-display);font-weight:800;font-size:1.15rem;margin:0;color
 .btn.shutter{width:100%;min-height:64px;font-size:1.25rem;background:var(--accent);color:var(--accent-ink);border-color:var(--accent);letter-spacing:.02em}
 .btn.shutter.busy{background:var(--brand-deep);border-color:var(--brand-deep)}
 .viewer.manual .laser{animation:none}
+/* área de leitura: moldura fechada, fora dela escurecido; laser parado no meio da faixa */
+.viewer .guide{border:2px solid #FFFFFF;border-radius:8px;box-shadow:0 0 0 9999px rgba(5,10,30,.55)}
+.viewer .guide::before,.viewer .guide::after{border-color:#5BF0A5;left:-3px;top:-3px}
+.viewer .guide::after{left:auto;top:auto;right:-3px;bottom:-3px}
+.viewer:not(.live) .guide{display:none}
+.viewer.live .laser{animation:none}
+.viewer.area-qr .laser{display:none}
 #btn-range[aria-pressed="true"]{border-color:var(--danger);color:var(--danger);background:transparent}
 .range{border:2px solid var(--accent);border-radius:12px;padding:14px;display:grid;gap:8px;background:var(--surface)}
 .range-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
@@ -198,6 +205,13 @@ textarea{font-family:var(--f-mono);font-size:.85rem;min-height:140px;resize:vert
           <button type="button" class="seg-b" id="mode-manual" aria-pressed="false">Disparo manual<small>Só lê ao tocar em Ler agora</small></button>
         </div>
       </div>
+      <div>
+        <span class="lbl" id="area-lbl">Área de leitura</span>
+        <div class="seg" role="group" aria-labelledby="area-lbl">
+          <button type="button" class="seg-b" id="area-bar" aria-pressed="true">Faixa<small>Código de barras, na linha vermelha</small></button>
+          <button type="button" class="seg-b" id="area-qr" aria-pressed="false">Quadrado<small>QR Code, no centro</small></button>
+        </div>
+      </div>
       <div class="toggles">
         <label class="tg" id="tg-continuous"><input type="checkbox" id="opt-continuous"><span>Leitura contínua<small>Continua lendo após cada código. Desligado, a câmera para a cada leitura.</small></span></label>
         <label class="tg"><input type="checkbox" id="opt-merge"><span>Somar código repetido<small>Lê o mesmo código de novo e soma 1 na quantidade, em vez de criar outra linha.</small></span></label>
@@ -284,7 +298,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } };
   const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch { return false; } };
 
-  const opts = Object.assign({ continuous: true, merge: true, sound: true, fmt: "codes", scanMode: "auto" }, lsGet(LS_OPTS, {}));
+  const opts = Object.assign({ continuous: true, merge: true, sound: true, fmt: "codes", scanMode: "auto", area: "bar" }, lsGet(LS_OPTS, {}));
   const st = { items: [], mode: "local", col: null, filter: "", flashId: null, downloads: null, localOk: true };
 
   /* ---------- armazenamento ---------- */
@@ -874,6 +888,50 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     shotUntil = performance.now() + 1600; updateShot();
   });
 
+  /* ---------- área de leitura: só o que está dentro do quadro marcado ---------- */
+  // frações do visor (x, y, largura, altura); a mesma medida desenha a moldura e recorta a imagem
+  const AREAS = { bar: { x: 0.12, y: 0.42, w: 0.76, h: 0.16 }, qr: { x: 0.29, y: 0.22, w: 0.42, h: 0.56 } };
+  function setArea(a) {
+    opts.area = a === "qr" ? "qr" : "bar"; lsSet(LS_OPTS, opts);
+    $("#area-bar").setAttribute("aria-pressed", String(opts.area === "bar"));
+    $("#area-qr").setAttribute("aria-pressed", String(opts.area === "qr"));
+    const r = AREAS[opts.area], g = document.querySelector(".guide"), l = document.querySelector(".laser");
+    Object.assign(g.style, { left: r.x * 100 + "%", top: r.y * 100 + "%", width: r.w * 100 + "%", height: r.h * 100 + "%", right: "auto", bottom: "auto" });
+    Object.assign(l.style, { left: (r.x + 0.02) * 100 + "%", right: (1 - r.x - r.w + 0.02) * 100 + "%" });
+    $("#viewer").classList.toggle("area-qr", opts.area === "qr");
+  }
+  $("#area-bar").addEventListener("click", () => setArea("bar"));
+  $("#area-qr").addEventListener("click", () => setArea("qr"));
+  // recorta do vídeo exatamente o pedaço que aparece dentro da moldura (o vídeo é exibido com object-fit: cover)
+  function cropArea() {
+    const vw = video.videoWidth, vh = video.videoHeight, el = $("#viewer");
+    const Vw = el.clientWidth, Vh = el.clientHeight;
+    if (!vw || !vh || !Vw || !Vh) return null;
+    const sc = Math.max(Vw / vw, Vh / vh), ox = (vw * sc - Vw) / 2, oy = (vh * sc - Vh) / 2;
+    const r = AREAS[opts.area];
+    const sx = (r.x * Vw + ox) / sc, sy = (r.y * Vh + oy) / sc, sw = (r.w * Vw) / sc, sh = (r.h * Vh) / sc;
+    const k = Math.min(1, 960 / sw);
+    work.width = Math.max(1, Math.round(sw * k)); work.height = Math.max(1, Math.round(sh * k));
+    work.getContext("2d", { willReadFrequently: true }).drawImage(video, sx, sy, sw, sh, 0, 0, work.width, work.height);
+    return work;
+  }
+  async function decodeArea() {
+    const cv = cropArea(); if (!cv) return null;
+    if (detector) {
+      try {
+        const found = await detector.detect(cv);
+        if (found && found.length) {
+          const cx = cv.width / 2, cy = cv.height / 2;
+          const dist = (b) => { const bb = b.boundingBox || { x: cx, y: cy, width: 0, height: 0 }; return Math.hypot(bb.x + bb.width / 2 - cx, bb.y + bb.height / 2 - cy); };
+          found.sort((a, b) => dist(a) - dist(b));
+          return { code: found[0].rawValue, format: niceFmt(found[0].format) };
+        }
+      } catch {}
+      return null;
+    }
+    return zxDecodeCanvas(cv);
+  }
+
   async function tick() {
     if (!running) return;
     const now = performance.now();
@@ -884,17 +942,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     if (wants && !busy && video.readyState >= 2 && now - lastTry > (detector ? 90 : 180)) {
       busy = true; lastTry = now;
       try {
-        let res = null;
-        if (detector) res = await decodeSource(video, null);
-        else {
-          const vw = video.videoWidth, vh = video.videoHeight;
-          if (vw && vh) {
-            const cw = vw * 0.9, ch = vh * 0.6, sx = (vw - cw) / 2, sy = (vh - ch) / 2, s = Math.min(1, 960 / cw);
-            work.width = Math.round(cw * s); work.height = Math.round(ch * s);
-            work.getContext("2d", { willReadFrequently: true }).drawImage(video, sx, sy, cw, ch, 0, 0, work.width, work.height);
-            res = zxDecodeCanvas(work);
-          }
-        }
+        const res = await decodeArea();
         if (res && res.code) {
           if (manual) {
             if (shotUntil) { shotUntil = 0; updateShot(); handleRead(res.code, res.format, "shot"); }
@@ -948,6 +996,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   $("#perm-retry").addEventListener("click", () => startCam());
   watchPermission();
   setMode(opts.scanMode);
+  setArea(opts.area);
   initEngines();
   initStore();
   window.addEventListener("storage", (e) => { if (e.key === LS_ITEMS && st.mode === "local") { st.items = lsGet(LS_ITEMS, []); render(); } });
