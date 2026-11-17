@@ -97,10 +97,6 @@ h2{font-family:var(--f-display);font-weight:800;font-size:1.15rem;margin:0;color
 .perm ol:empty{display:none}
 .perm ol b{color:var(--accent)}
 .perm.bad{background:color-mix(in srgb,var(--danger) 9%,var(--surface))}
-.wa{display:grid;gap:8px}
-input[type=tel]{border:1px solid var(--line);background:var(--bg);min-height:46px;padding:8px 14px;width:100%;min-width:0;border-radius:12px;font-variant-numeric:tabular-nums}
-.btn.wa-btn{width:100%;background:#25D366;border-color:#25D366;color:#0B2E1A;font-size:1rem}
-.btn.wa-btn:hover{background:#1EBE5A;border-color:#1EBE5A}
 .toggles{display:grid;gap:4px}
 .tg{display:flex;align-items:center;gap:10px;min-height:40px;cursor:pointer;font-size:.92rem;font-weight:600}
 .tg input{width:20px;height:20px;accent-color:var(--accent);margin:0;flex:none}
@@ -211,17 +207,8 @@ textarea{font-family:var(--f-mono);font-size:.85rem;min-height:140px;resize:vert
         </select>
       </div>
       <textarea id="preview" readonly aria-label="Texto para copiar"></textarea>
-      <div class="wa">
-        <label class="lbl" for="wa-num">WhatsApp de quem vai receber (opcional)</label>
-        <div class="manual">
-          <input type="tel" id="wa-num" inputmode="tel" autocomplete="tel" placeholder="(11) 91234-5678">
-        </div>
-        <button class="btn wa-btn" id="btn-wa" type="button">Enviar pelo WhatsApp</button>
-        <p class="hint">Sem número, o WhatsApp abre para você escolher o contato.</p>
-      </div>
       <div class="btns">
         <button class="btn primary grow" id="btn-copy" type="button">Copiar texto</button>
-        <button class="btn grow" id="btn-share" type="button" hidden>Enviar…</button>
       </div>
       <div class="btns" id="file-btns">
         <button class="btn grow" id="btn-txt" type="button">Baixar .txt</button>
@@ -449,47 +436,6 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     a.href = URL.createObjectURL(blob); a.download = name; document.body.append(a); a.click();
     setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
   }
-  /* ---------- WhatsApp ---------- */
-  const LS_WA = "bsa.wa.v1";
-  $("#wa-num").value = lsGet(LS_WA, "");
-  $("#wa-num").addEventListener("change", (e) => lsSet(LS_WA, e.target.value.trim()));
-  function waNumber() {
-    let d = $("#wa-num").value.replace(/\D/g, "");
-    if (!d) return "";
-    if (d.startsWith("00")) d = d.slice(2);
-    if (d.length === 10 || d.length === 11) d = "55" + d; // número brasileiro com DDD
-    return d;
-  }
-  function waMessage() {
-    const units = st.items.reduce((s, i) => s + (i.qty || 0), 0);
-    const head = "*Códigos lidos* (TIM Bar Code Scanning Application)\n" + fmtDate(Date.now()) +
-      "\nTotal: " + st.items.length + " código(s), " + units + " leitura(s)\n\n";
-    return head + buildText(opts.fmt === "full" ? "qty" : opts.fmt);
-  }
-  $("#btn-wa").addEventListener("click", async () => {
-    if (!st.items.length) return toast("A lista está vazia.");
-    const num = waNumber();
-    if ($("#wa-num").value.trim() && (num.length < 12 || num.length > 15)) return toast("Confira o número: use DDD + número, ex. (11) 91234-5678.");
-    lsSet(LS_WA, $("#wa-num").value.trim());
-    const msg = waMessage();
-    // Lista muito longa não cabe no link: tenta mandar como arquivo pelo menu de compartilhar do celular
-    if (msg.length > 3500 && navigator.canShare) {
-      try {
-        const f = new File([xlsxBlob()], fname("xlsx"), { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-        if (navigator.canShare({ files: [f] })) {
-          toast("Lista grande: escolha o WhatsApp para enviar a planilha.");
-          await navigator.share({ files: [f], title: "Códigos lidos", text: st.items.length + " códigos" });
-          return;
-        }
-      } catch (e) { if (e && e.name === "AbortError") return; }
-    }
-    let text = msg;
-    if (text.length > 6000) { text = text.slice(0, 5800).replace(/\n[^\n]*$/, "") + "\n…\n(lista cortada: exporte em Excel para enviar completa)"; toast("Lista longa: a mensagem foi cortada. Para enviar tudo, use Baixar Excel."); }
-    const url = "https://wa.me/" + num + "?text=" + encodeURIComponent(text);
-    const a = document.createElement("a"); a.href = url; a.target = "_blank"; a.rel = "noopener";
-    document.body.append(a); a.click(); a.remove();
-  });
-
   $("#btn-txt").addEventListener("click", () => saveFile("txt"));
   $("#btn-csv").addEventListener("click", () => saveFile("csv"));
   $("#btn-xlsx").addEventListener("click", () => saveFile("xlsx"));
@@ -502,19 +448,6 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     $("#btn-xlsx").hidden = typeof XLSX === "undefined";
   }
   updateFileButtons();
-
-  if (!inArtifact && navigator.share) {
-    $("#btn-share").hidden = false;
-    $("#btn-share").addEventListener("click", async () => {
-      if (!st.items.length) return toast("A lista está vazia.");
-      try {
-        let f = null;
-        try { f = new File([xlsxBlob()], fname("xlsx"), { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }); } catch {}
-        if (f && navigator.canShare && navigator.canShare({ files: [f] })) await navigator.share({ files: [f], title: "Códigos lidos", text: st.items.length + " códigos" });
-        else await navigator.share({ title: "Códigos lidos", text: buildText(opts.fmt) });
-      } catch (e) { if (e && e.name !== "AbortError") toast("Não foi possível enviar: " + e.message); }
-    });
-  }
 
   function askClear() {
     const area = $("#clear-area");
