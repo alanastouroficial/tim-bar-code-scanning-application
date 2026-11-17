@@ -97,6 +97,24 @@ h2{font-family:var(--f-display);font-weight:800;font-size:1.15rem;margin:0;color
 .perm ol:empty{display:none}
 .perm ol b{color:var(--accent)}
 .perm.bad{background:color-mix(in srgb,var(--danger) 9%,var(--surface))}
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:0;border:2px solid var(--accent);border-radius:14px;overflow:hidden}
+.seg-b{min-height:56px;border:0;background:transparent;color:var(--accent);font-weight:800;cursor:pointer;padding:6px 10px;text-align:center;line-height:1.2}
+.seg-b + .seg-b{border-left:2px solid var(--accent)}
+.seg-b small{display:block;font-weight:500;font-size:.74rem;opacity:.85;margin-top:2px}
+.seg-b[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+.btn.shutter{width:100%;min-height:64px;font-size:1.25rem;background:var(--accent);color:var(--accent-ink);border-color:var(--accent);letter-spacing:.02em}
+.btn.shutter.busy{background:var(--brand-deep);border-color:var(--brand-deep)}
+.viewer.manual .laser{animation:none}
+#btn-range[aria-pressed="true"]{border-color:var(--danger);color:var(--danger);background:transparent}
+.range{border:2px solid var(--accent);border-radius:12px;padding:14px;display:grid;gap:8px;background:var(--surface)}
+.range-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.range-h strong{font-family:var(--f-display);font-weight:800;font-size:1.05rem}
+.range-step{font-size:.78rem;font-weight:800;color:var(--accent-ink);background:var(--accent);border-radius:9999px;padding:2px 10px}
+.range p{margin:0;font-size:.92rem}
+.range code{font-family:var(--f-mono);font-size:.9rem;word-break:break-all;background:var(--tint);border-radius:6px;padding:0 4px}
+.range-sum b{font-family:var(--f-display);font-size:1.3rem;font-weight:900;color:var(--accent)}
+.range-prev{margin:0;font-family:var(--f-mono);font-size:.85rem;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:8px 10px;overflow-x:auto}
+.range-err{color:var(--danger);font-weight:600}
 .toggles{display:grid;gap:4px}
 .tg{display:flex;align-items:center;gap:10px;min-height:40px;cursor:pointer;font-size:.92rem;font-weight:600}
 .tg input{width:20px;height:20px;accent-color:var(--accent);margin:0;flex:none}
@@ -154,6 +172,8 @@ textarea{font-family:var(--f-mono);font-size:.85rem;min-height:140px;resize:vert
         <div class="idle" id="idle"><div><strong>Câmera desligada</strong>Toque em <b>Ler com a câmera</b> e aponte para o código, ou use <b>Fotografar código</b>.</div></div>
         <div class="last" id="last" hidden></div>
       </div>
+      <button class="btn shutter" id="btn-shot" type="button" hidden>Ler agora</button>
+      <div class="range" id="range" hidden role="region" aria-live="polite" aria-label="Leitura por intervalo"></div>
       <p class="msg" id="cam-msg" hidden></p>
       <div class="perm" id="perm" hidden role="region" aria-live="polite" aria-labelledby="perm-t">
         <strong id="perm-t"></strong>
@@ -169,9 +189,17 @@ textarea{font-family:var(--f-mono);font-size:.85rem;min-height:140px;resize:vert
         <label class="btn grow" for="photo" id="btn-photo">Fotografar código</label>
         <input id="photo" type="file" accept="image/*" capture="environment" hidden>
         <button class="btn" id="btn-torch" type="button" aria-pressed="false" hidden>Lanterna</button>
+        <button class="btn grow" id="btn-range" type="button">Leitura por intervalo</button>
+      </div>
+      <div>
+        <span class="lbl" id="mode-lbl">Modo de leitura</span>
+        <div class="seg" role="group" aria-labelledby="mode-lbl">
+          <button type="button" class="seg-b" id="mode-auto" aria-pressed="true">Automático<small>Lê sozinho ao enquadrar</small></button>
+          <button type="button" class="seg-b" id="mode-manual" aria-pressed="false">Disparo manual<small>Só lê ao tocar em Ler agora</small></button>
+        </div>
       </div>
       <div class="toggles">
-        <label class="tg"><input type="checkbox" id="opt-continuous"><span>Leitura contínua<small>Continua lendo após cada código. Desligado, a câmera para a cada leitura.</small></span></label>
+        <label class="tg" id="tg-continuous"><input type="checkbox" id="opt-continuous"><span>Leitura contínua<small>Continua lendo após cada código. Desligado, a câmera para a cada leitura.</small></span></label>
         <label class="tg"><input type="checkbox" id="opt-merge"><span>Somar código repetido<small>Lê o mesmo código de novo e soma 1 na quantidade, em vez de criar outra linha.</small></span></label>
         <label class="tg"><input type="checkbox" id="opt-sound"><span>Bipe e vibração</span></label>
       </div>
@@ -256,7 +284,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } };
   const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch { return false; } };
 
-  const opts = Object.assign({ continuous: true, merge: true, sound: true, fmt: "codes" }, lsGet(LS_OPTS, {}));
+  const opts = Object.assign({ continuous: true, merge: true, sound: true, fmt: "codes", scanMode: "auto" }, lsGet(LS_OPTS, {}));
   const st = { items: [], mode: "local", col: null, filter: "", flashId: null, downloads: null, localOk: true };
 
   /* ---------- armazenamento ---------- */
@@ -319,7 +347,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     const code = String(raw || "").replace(/[\r\n\t]+/g, " ").trim();
     if (!code) return;
     const now = Date.now();
-    if (source === "camera" && code === lastHit.code && now - lastHit.t < 2500) return;
+    if (source === "camera" && code === lastHit.code && now - lastHit.t < 2500) return; // só no automático; o disparo manual é sempre intencional
     lastHit = { code, t: now };
     let item = opts.merge ? st.items.find((i) => i.code === code) : null;
     if (item) { item.qty += 1; item.lastAt = now; if (!item.format && format) item.format = format; }
@@ -330,6 +358,132 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     render();
     feedback(code, item.qty);
   }
+
+  /* ---------- leitura por intervalo ---------- */
+  const MAX_RANGE = 10000;
+  const rg = { active: false, step: 0, start: null, end: null, check: false, warned: false };
+  function luhnDigit(body) {
+    let sum = 0, dbl = true;
+    for (let i = body.length - 1; i >= 0; i--) { let d = body.charCodeAt(i) - 48; if (dbl) { d *= 2; if (d > 9) d -= 9; } sum += d; dbl = !dbl; }
+    return String((10 - (sum % 10)) % 10);
+  }
+  const luhnValid = (s) => /^\d{2,}$/.test(s) && luhnDigit(s.slice(0, -1)) === s.slice(-1);
+  const bothDigits = (a, b) => /^\d+$/.test(a) && /^\d+$/.test(b);
+  const fmtN = (n) => Number(n).toLocaleString("pt-BR");
+  function computeRange(s1, s2, check) {
+    let a = s1, b = s2;
+    if (check) {
+      if (!bothDigits(a, b)) return { err: "Dígito verificador só vale para códigos só com números." };
+      a = a.slice(0, -1); b = b.slice(0, -1);
+    }
+    const A = /^(.*?)(\d+)$/.exec(a), B = /^(.*?)(\d+)$/.exec(b);
+    if (!A || !B) return { err: "Os dois códigos precisam terminar em número para formar um intervalo." };
+    if (A[1] !== B[1]) return { err: "O começo dos dois códigos é diferente (" + (A[1] || "só números") + " e " + (B[1] || "só números") + "). Leia o primeiro e o último da mesma sequência." };
+    let width = 0;
+    if (A[2].length === B[2].length) width = A[2].length;
+    else if (A[2][0] === "0" || B[2][0] === "0") return { err: "Os números dos dois códigos têm tamanhos diferentes. Confira se são da mesma sequência." };
+    let n1 = BigInt(A[2]), n2 = BigInt(B[2]), reversed = false;
+    if (n1 > n2) { const t = n1; n1 = n2; n2 = t; reversed = true; }
+    const count = n2 - n1 + 1n;
+    if (count > BigInt(MAX_RANGE)) return { err: "Esse intervalo daria " + count.toLocaleString("pt-BR") + " seriais, acima do limite de " + fmtN(MAX_RANGE) + ". Confira se leu o primeiro e o último certos." + (!check && bothDigits(s1, s2) ? " Se for chip (ICCID) ou IMEI, marque a opção do dígito verificador." : "") };
+    const list = [];
+    for (let n = n1; n <= n2; n++) {
+      let s = n.toString(); if (width) s = s.padStart(width, "0");
+      s = A[1] + s; if (check) s += luhnDigit(s);
+      list.push(s);
+    }
+    return { list, reversed };
+  }
+  function startRange() {
+    Object.assign(rg, { active: true, step: 1, start: null, end: null, check: false, warned: false });
+    renderRange();
+    $("#range").scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }
+  function cancelRange() { Object.assign(rg, { active: false, step: 0, start: null, end: null }); renderRange(); }
+  function rangeCapture(code, format) {
+    if (rg.step === 1) {
+      rg.start = { code, format }; rg.step = 2; rg.warned = false;
+      feedback(code, 1); renderRange(); return;
+    }
+    if (rg.step === 2) {
+      if (code === rg.start.code) { if (!rg.warned) { toast("Esse é o primeiro código. Agora leia o último."); rg.warned = true; } return; }
+      rg.end = { code, format }; rg.step = 3;
+      rg.check = bothDigits(rg.start.code, code) && rg.start.code.length >= 14 && luhnValid(rg.start.code) && luhnValid(code);
+      feedback(code, 1); renderRange();
+    }
+  }
+  function renderRange() {
+    const box = $("#range");
+    $("#btn-range").textContent = rg.active ? "Cancelar intervalo" : "Leitura por intervalo";
+    $("#btn-range").setAttribute("aria-pressed", String(rg.active));
+    if (!rg.active) { box.hidden = true; box.textContent = ""; return; }
+    box.hidden = false; box.textContent = "";
+    const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+    const head = el("div", "range-h");
+    head.append(el("strong", null, "Leitura por intervalo"), el("span", "range-step", rg.step < 3 ? "Passo " + rg.step + " de 2" : "Confira"));
+    box.append(head);
+    if (rg.step === 1) box.append(el("p", null, "Leia o PRIMEIRO código da sequência (com a câmera, foto ou digitando)."));
+    if (rg.step === 2) {
+      const p = el("p", null, "Primeiro: "); p.append(el("code", null, rg.start.code)); box.append(p);
+      box.append(el("p", null, "Agora leia o ÚLTIMO código da sequência."));
+    }
+    if (rg.step === 3) {
+      const r = computeRange(rg.start.code, rg.end.code, rg.check);
+      if (bothDigits(rg.start.code, rg.end.code)) {
+        const lab = el("label", "tg"); const cb = document.createElement("input"); cb.type = "checkbox"; cb.id = "rg-check"; cb.checked = rg.check;
+        cb.addEventListener("change", () => { rg.check = cb.checked; renderRange(); });
+        const sp = el("span", null, "Último dígito é verificador"); sp.append(el("small", null, "Marque para chip (ICCID) e IMEI: o app recalcula o último dígito de cada serial."));
+        lab.append(cb, sp); box.append(lab);
+      }
+      const btns = el("div", "btns");
+      if (r.err) {
+        box.append(el("p", "range-err", r.err));
+        const again = el("button", "btn primary grow", "Ler o último de novo"); again.type = "button";
+        again.addEventListener("click", () => { rg.step = 2; rg.end = null; renderRange(); });
+        btns.append(again);
+      } else {
+        const have = new Set(st.items.map((i) => i.code));
+        const dup = r.list.filter((c) => have.has(c)).length;
+        const novos = r.list.length - dup;
+        const sum = el("p", "range-sum"); sum.append(el("b", null, fmtN(r.list.length)), document.createTextNode(" seriais, de "));
+        sum.append(el("code", null, r.list[0]), document.createTextNode(" até "), el("code", null, r.list[r.list.length - 1]));
+        box.append(sum);
+        const prev = r.list.length <= 6 ? r.list : r.list.slice(0, 3).concat(["…"], r.list.slice(-2));
+        box.append(el("pre", "range-prev", prev.join("\n")));
+        if (dup) box.append(el("p", "hint", fmtN(dup) + " já estão na lista e não serão repetidos."));
+        const add = el("button", "btn primary grow", novos ? "Adicionar " + fmtN(novos) + " à lista" : "Nada novo para adicionar"); add.type = "button"; add.disabled = !novos;
+        add.addEventListener("click", () => addRange(r.list));
+        btns.append(add);
+      }
+      const cancel = el("button", "btn grow", "Cancelar"); cancel.type = "button"; cancel.addEventListener("click", cancelRange);
+      btns.append(cancel); box.append(btns);
+      return;
+    }
+    const btns = el("div", "btns");
+    const cancel = el("button", "btn grow", "Cancelar intervalo"); cancel.type = "button"; cancel.addEventListener("click", cancelRange);
+    btns.append(cancel); box.append(btns);
+  }
+  function addRange(list) {
+    const have = new Set(st.items.map((i) => i.code));
+    const now = Date.now(); const added = [];
+    list.forEach((code, i) => {
+      if (have.has(code)) return;
+      const item = { id: uid8() + i.toString(36), code, format: "INTERVALO", qty: 1, firstAt: now + i, lastAt: now };
+      st.items.push(item); added.push(item);
+    });
+    sortItems();
+    if (st.mode === "cloud") added.forEach((it) => persist(it)); else persist({});
+    cancelRange(); render();
+    if (opts.sound) { beep(); try { navigator.vibrate && navigator.vibrate([60, 60, 60]); } catch {} }
+    toast(fmtN(added.length) + " seriais adicionados à lista.");
+  }
+  function handleRead(raw, format, source) {
+    const code = String(raw || "").replace(/[\r\n\t]+/g, " ").trim();
+    if (!code) return;
+    if (rg.active) return rangeCapture(code, format);
+    addCode(code, format, source);
+  }
+  $("#btn-range").addEventListener("click", () => (rg.active ? cancelRange() : startRange()));
 
   /* ---------- render ---------- */
   const dtf = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
@@ -475,7 +629,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   $("#manual-form").addEventListener("submit", (e) => {
     e.preventDefault();
     const v = $("#manual").value; if (!v.trim()) return;
-    addCode(v, "MANUAL", "manual"); $("#manual").value = ""; $("#manual").focus();
+    handleRead(v, "MANUAL", "manual"); $("#manual").value = ""; $("#manual").focus();
   });
 
   /* ---------- feedback ---------- */
@@ -681,6 +835,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     try { wake = navigator.wakeLock ? await navigator.wakeLock.request("screen") : null; } catch { wake = null; }
     running = true; $("#idle").hidden = true; $("#viewer").classList.add("live");
     $("#btn-cam").textContent = "Parar câmera";
+    shotUntil = 0; updateShot();
     requestAnimationFrame(tick);
   }
   function stopCam() {
@@ -691,12 +846,42 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     $("#idle").hidden = false; $("#viewer").classList.remove("live");
     $("#btn-torch").hidden = true; $("#btn-torch").setAttribute("aria-pressed", "false");
     $("#btn-cam").textContent = "Ler com a câmera";
+    shotUntil = 0; updateShot();
     refreshCamUI();
   }
+  /* ---------- modo de leitura: automático ou disparo manual ---------- */
+  let shotUntil = 0;
+  function setMode(m) {
+    opts.scanMode = m === "manual" ? "manual" : "auto"; lsSet(LS_OPTS, opts);
+    const manual = opts.scanMode === "manual";
+    $("#mode-auto").setAttribute("aria-pressed", String(!manual));
+    $("#mode-manual").setAttribute("aria-pressed", String(manual));
+    $("#tg-continuous").hidden = manual;
+    $("#viewer").classList.toggle("manual", manual);
+    shotUntil = 0; updateShot();
+  }
+  function updateShot() {
+    const b = $("#btn-shot");
+    b.hidden = !(running && opts.scanMode === "manual");
+    b.textContent = shotUntil ? "Lendo…" : "Ler agora";
+    b.classList.toggle("busy", !!shotUntil);
+  }
+  $("#mode-auto").addEventListener("click", () => setMode("auto"));
+  $("#mode-manual").addEventListener("click", () => setMode("manual"));
+  $("#btn-shot").addEventListener("click", () => {
+    if (!running) return;
+    try { actx && actx.resume && actx.resume(); } catch {}
+    shotUntil = performance.now() + 1600; updateShot();
+  });
+
   async function tick() {
     if (!running) return;
     const now = performance.now();
-    if (!busy && video.readyState >= 2 && now - lastTry > (detector ? 90 : 180)) {
+    const manual = opts.scanMode === "manual";
+    if (manual && shotUntil && now > shotUntil) { shotUntil = 0; updateShot(); toast("Nenhum código no quadro. Aproxime, centralize e toque em Ler agora de novo."); }
+    const paused = rg.active && rg.step === 3;
+    const wants = !paused && (!manual || shotUntil > 0);
+    if (wants && !busy && video.readyState >= 2 && now - lastTry > (detector ? 90 : 180)) {
       busy = true; lastTry = now;
       try {
         let res = null;
@@ -710,7 +895,14 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
             res = zxDecodeCanvas(work);
           }
         }
-        if (res && res.code) { addCode(res.code, res.format, "camera"); if (!opts.continuous) stopCam(); }
+        if (res && res.code) {
+          if (manual) {
+            if (shotUntil) { shotUntil = 0; updateShot(); handleRead(res.code, res.format, "shot"); }
+          } else {
+            handleRead(res.code, res.format, "camera");
+            if (!opts.continuous && !rg.active) stopCam();
+          }
+        }
       } catch {}
       busy = false;
     }
@@ -745,7 +937,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
           if (rot) { g.translate(c.width / 2, c.height / 2); g.rotate(Math.PI / 2); g.drawImage(img, -w / 2, -h / 2, w, h); }
           else g.drawImage(img, 0, 0, w, h);
           const res = await decodeSource(c, c);
-          if (res && res.code) { addCode(res.code, res.format, "photo"); return; }
+          if (res && res.code) { handleRead(res.code, res.format, "photo"); return; }
         }
       }
       showMsg("Nenhum código encontrado na foto. Fotografe mais perto, com o código reto, bem iluminado e nítido.");
@@ -755,6 +947,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   /* ---------- início ---------- */
   $("#perm-retry").addEventListener("click", () => startCam());
   watchPermission();
+  setMode(opts.scanMode);
   initEngines();
   initStore();
   window.addEventListener("storage", (e) => { if (e.key === LS_ITEMS && st.mode === "local") { st.items = lsGet(LS_ITEMS, []); render(); } });
